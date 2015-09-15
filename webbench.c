@@ -27,7 +27,11 @@
 /* values */
 volatile int timerexpired=0;
 int speed=0;
-int failed=0;
+int failed_s=0;
+int failed_w=0;
+int failed_d=0;
+int failed_r=0;
+int failed_c=0;
 int bytes=0;
 /* globals */
 int http10=1; /* 0 - http/0.9, 1 - http/1.0, 2 - http/1.1 */
@@ -145,7 +149,7 @@ int main(int argc, char *argv[])
 	     proxyport=atoi(tmp+1);break;
    case ':':
    case 'h':
-   case '?': usage();return 2;break;
+   case '?': usage();return 2;
    case 'c': clients=atoi(optarg);break;
   }
  }
@@ -293,7 +297,7 @@ void build_request(const char *url)
 /* vraci system rc error kod */
 static int bench(void)
 {
-  int i,j,k;	
+  int i,s,w,d,r,c,k;	
   pid_t pid=0;
   FILE *f;
 
@@ -354,7 +358,7 @@ static int bench(void)
 		 return 3;
 	 }
 	 /* fprintf(stderr,"Child - %d %d\n",speed,failed); */
-	 fprintf(f,"%d %d %d\n",speed,failed,bytes);
+	 fprintf(f,"%d %d %d %d %d %d %d\n",speed,failed_s,failed_w,failed_d,failed_r,failed_c,bytes);
 	 fclose(f);
 	 return 0;
   } else
@@ -367,30 +371,38 @@ static int bench(void)
 	  }
 	  setvbuf(f,NULL,_IONBF,0);
 	  speed=0;
-          failed=0;
+          failed_s=0;
+          failed_w=0;
+          failed_d=0;
+          failed_r=0;
+          failed_c=0;
           bytes=0;
 
 	  while(1)
 	  {
-		  pid=fscanf(f,"%d %d %d",&i,&j,&k);
+		  pid=fscanf(f,"%d %d %d %d %d %d %d",&i,&s,&w,&d,&r,&c,&k);
 		  if(pid<2)
                   {
                        fprintf(stderr,"Some of our childrens died.\n");
                        break;
                   }
 		  speed+=i;
-		  failed+=j;
+		  failed_s+=s;
+		  failed_w+=w;
+		  failed_d+=d;
+		  failed_c+=c;
+		  failed_r+=r;
 		  bytes+=k;
 		  /* fprintf(stderr,"*Knock* %d %d read=%d\n",speed,failed,pid); */
 		  if(--clients==0) break;
 	  }
 	  fclose(f);
 
-  printf("\nSpeed=%d pages/min, %d bytes/sec.\nRequests: %d susceed, %d failed.\n",
-		  (int)((speed+failed)/(benchtime/60.0f)),
+  printf("\nSpeed=%d pages/min, %d bytes/sec.\nRequests: %d susceed, %d socket failed\t%d write failed\t%d shutdown failed\t%d read failed\t%d close failed.\n",
+		  (int)((speed+failed_s+failed_w+failed_d+failed_c+failed_r)/(benchtime/60.0f)),
 		  (int)(bytes/(float)benchtime),
 		  speed,
-		  failed);
+		  failed_s,failed_w,failed_d,failed_r,failed_c);
   }
   return i;
 }
@@ -414,18 +426,18 @@ void benchcore(const char *host,const int port,const char *req)
  {
     if(timerexpired)
     {
-       if(failed>0)
+       if(failed_r>0)
        {
           /* fprintf(stderr,"Correcting failed by signal\n"); */
-          failed--;
+          failed_r--;
        }
        return;
     }
     s=Socket(host,port);                          
-    if(s<0) { failed++;continue;} 
-    if(rlen!=write(s,req,rlen)) {failed++;close(s);continue;}
+    if(s<0) { failed_s++;continue;} 
+    if(rlen!=write(s,req,rlen)) {failed_w++;close(s);continue;}
     if(http10==0) 
-	    if(shutdown(s,1)) { failed++;close(s);continue;}
+	    if(shutdown(s,1)) { failed_d++;close(s);continue;}
     if(force==0) 
     {
             /* read all available data from socket */
@@ -436,7 +448,7 @@ void benchcore(const char *host,const int port,const char *req)
               /* fprintf(stderr,"%d\n",i); */
 	      if(i<0) 
               { 
-                 failed++;
+                 failed_r++;
                  close(s);
                  goto nexttry;
               }
@@ -446,7 +458,7 @@ void benchcore(const char *host,const int port,const char *req)
 			       bytes+=i;
 	    }
     }
-    if(close(s)) {failed++;continue;}
+    if(close(s)) {failed_c++;continue;}
     speed++;
  }
 }
